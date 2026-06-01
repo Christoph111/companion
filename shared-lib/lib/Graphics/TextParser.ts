@@ -47,47 +47,54 @@ export function segmentTextToUnicodeChars(
 /** Minimum auto font size as a fraction of canvas height (10%) */
 export const MIN_FONT_SIZE_FRACTION = 0.1
 
-export function resolveFontSizes(w: number, h: number, fontsize: number | 'auto', charCount: number): number[] {
-	let fontheight = Number(fontsize)
-	if (isNaN(fontheight)) {
-		// narrow the sizes to check by guessing how many chars will fit at a size
-		const area = (w * h) / 5000
+export function resolveFontSizes(
+	w: number,
+	h: number,
+	fontsize: number,
+	allowShrink: boolean,
+	charCount: number
+): number[] {
+	// Clamp the configured size to a sane pixel range
+	const clamped = Math.min(Math.max(fontsize, 3), h)
 
-		// Sizes expressed as fractions of canvas height
-		let baseSizes: number[]
-		if (charCount < 7 * area) {
-			baseSizes = [0.83, 0.71, 0.61, 0.43, 0.33, 0.28, 0.24, 0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
-		} else if (charCount < 30 * area) {
-			baseSizes = [0.43, 0.33, 0.28, 0.24, 0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
-		} else if (charCount < 40 * area) {
-			baseSizes = [0.33, 0.28, 0.24, 0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
-		} else if (charCount < 50 * area) {
-			baseSizes = [0.24, 0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
-		} else {
-			baseSizes = [0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
-		}
-
-		// Multiply fraction by h to get pixel size; deduplicate while preserving order
-		const seen = new Set<number>()
-		const scaled: number[] = []
-		for (const s of baseSizes) {
-			const v = Math.max(s * h, 1)
-			if (!seen.has(v)) {
-				seen.add(v)
-				scaled.push(v)
-			}
-		}
-		return scaled
-	} else {
-		if (fontheight < 3) {
-			// block out some tiny fontsizes
-			fontheight = 3
-		} else if (fontheight > h) {
-			// block out some giant fontsizes
-			fontheight = h
-		}
-		return [fontheight]
+	if (!allowShrink) {
+		return [clamped]
 	}
+
+	// With shrinking enabled, build the heuristic candidate list (same logic as the old 'auto' path)
+	// and keep only sizes ≤ the configured size, prepending the configured size first.
+	const area = (w * h) / 5000
+
+	// Sizes expressed as fractions of canvas height
+	let baseSizes: number[]
+	if (charCount < 7 * area) {
+		baseSizes = [0.83, 0.71, 0.61, 0.43, 0.33, 0.28, 0.24, 0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
+	} else if (charCount < 30 * area) {
+		baseSizes = [0.43, 0.33, 0.28, 0.24, 0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
+	} else if (charCount < 40 * area) {
+		baseSizes = [0.33, 0.28, 0.24, 0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
+	} else if (charCount < 50 * area) {
+		baseSizes = [0.24, 0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
+	} else {
+		baseSizes = [0.21, 0.17, 0.14, 0.13, 0.11, MIN_FONT_SIZE_FRACTION]
+	}
+
+	// Start with the configured size, then add heuristic candidates smaller than it
+	const seen = new Set<number>()
+	const candidates: number[] = []
+
+	seen.add(clamped)
+	candidates.push(clamped)
+
+	for (const s of baseSizes) {
+		const v = Math.max(s * h, 1)
+		if (v < clamped && !seen.has(v)) {
+			seen.add(v)
+			candidates.push(v)
+		}
+	}
+
+	return candidates
 }
 
 /**
